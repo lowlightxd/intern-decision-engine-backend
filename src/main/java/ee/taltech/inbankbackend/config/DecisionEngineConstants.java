@@ -12,4 +12,5 @@ public class DecisionEngineConstants {
     public static final Integer SEGMENT_2_CREDIT_MODIFIER = 300;
     public static final Integer SEGMENT_3_CREDIT_MODIFIER = 1000;
     public static final Double MINIMUM_APPROVED_CREDIT_SCORE = 0.1;
+    public static final Integer AVG_LIFE_EXPECTANCY_MONTHS = 936;
 }

@@ -1,7 +1,9 @@
 package ee.taltech.inbankbackend.service;
 
 import com.github.vladislavgoltjajev.personalcode.locale.estonia.EstonianPersonalCodeValidator;
+import com.github.vladislavgoltjajev.personalcode.locale.estonia.EstonianPersonalCodeParser;
 import ee.taltech.inbankbackend.config.DecisionEngineConstants;
+import ee.taltech.inbankbackend.exceptions.AgeNotInRangeException;
 import ee.taltech.inbankbackend.exceptions.InvalidLoanAmountException;
 import ee.taltech.inbankbackend.exceptions.InvalidLoanPeriodException;
 import ee.taltech.inbankbackend.exceptions.InvalidPersonalCodeException;
@@ -9,7 +11,8 @@ import ee.taltech.inbankbackend.exceptions.NoValidLoanException;
 import org.springframework.stereotype.Service;
 
 /**
- * A service class that provides a method for calculating an approved loan amount and period for a customer.
+ * A service class that provides a method for calculating an approved loan
+ * amount and period for a customer.
  * The loan amount is calculated based on the customer's credit modifier,
  * which is determined by the last four digits of their ID code.
  */
@@ -18,26 +21,34 @@ public class DecisionEngine {
 
     // Used to check for the validity of the presented ID code.
     private final EstonianPersonalCodeValidator validator = new EstonianPersonalCodeValidator();
+    private final EstonianPersonalCodeParser parser = new EstonianPersonalCodeParser();
     private int creditModifier = 0;
 
     /**
-     * Calculates the maximum loan amount and period for the customer based on their ID code,
+     * Calculates the maximum loan amount and period for the customer based on their
+     * ID code,
      * the requested loan amount and the loan period.
      * The loan period must be between 12 and 60 months (inclusive).
      * The loan amount must be between 2000 and 10000€ months (inclusive).
      *
      * @param personalCode ID code of the customer that made the request.
-     * @param loanAmount Requested loan amount
-     * @param loanPeriod Requested loan period
-     * @return A Decision object containing the approved loan amount and period, and an error message (if any)
-     * @throws InvalidPersonalCodeException If the provided personal ID code is invalid
-     * @throws InvalidLoanAmountException If the requested loan amount is invalid
-     * @throws InvalidLoanPeriodException If the requested loan period is invalid
-     * @throws NoValidLoanException If there is no valid loan found for the given ID code, loan amount and loan period
+     * @param loanAmount   Requested loan amount
+     * @param loanPeriod   Requested loan period
+     * @return A Decision object containing the approved loan amount and period, and
+     *         an error message (if any)
+     * @throws InvalidPersonalCodeException If the provided personal ID code is
+     *                                      invalid
+     * @throws InvalidLoanAmountException   If the requested loan amount is invalid
+     * @throws InvalidLoanPeriodException   If the requested loan period is invalid
+     * @throws NoValidLoanException         If there is no valid loan found for the
+     *                                      given ID code, loan amount and loan
+     *                                      period
+     * @throws AgeNotInRangeException       If customer's age is not in the valid
+     *                                      range
      */
     public Decision calculateApprovedLoan(String personalCode, Long loanAmount, int loanPeriod)
             throws InvalidPersonalCodeException, InvalidLoanAmountException, InvalidLoanPeriodException,
-            NoValidLoanException {
+            NoValidLoanException, AgeNotInRangeException {
         try {
             verifyInputs(personalCode, loanAmount, loanPeriod);
         } catch (Exception e) {
@@ -52,7 +63,7 @@ public class DecisionEngine {
         }
 
         if (getCreditScore(loanAmount, loanPeriod) < DecisionEngineConstants.MINIMUM_APPROVED_CREDIT_SCORE) {
-            throw new NoValidLoanException("No valid loan found!");
+            throw new NoValidLoanException("Low credit score!");
         }
 
         while (highestValidLoanAmount(loanPeriod) < DecisionEngineConstants.MINIMUM_LOAN_AMOUNT) {
@@ -60,7 +71,8 @@ public class DecisionEngine {
         }
 
         if (loanPeriod <= DecisionEngineConstants.MAXIMUM_LOAN_PERIOD) {
-            outputLoanAmount = Math.min(DecisionEngineConstants.MAXIMUM_LOAN_AMOUNT, highestValidLoanAmount(loanPeriod));
+            outputLoanAmount = Math.min(DecisionEngineConstants.MAXIMUM_LOAN_AMOUNT,
+                    highestValidLoanAmount(loanPeriod));
         } else {
             throw new NoValidLoanException("No valid loan found!");
         }
@@ -69,7 +81,8 @@ public class DecisionEngine {
     }
 
     /**
-     * Calculates the largest valid loan for the current credit modifier and loan period.
+     * Calculates the largest valid loan for the current credit modifier and loan
+     * period.
      *
      * @return Largest valid loan amount
      */
@@ -78,7 +91,8 @@ public class DecisionEngine {
     }
 
     /**
-     * Calculates the credit modifier of the customer to according to the last four digits of their ID code.
+     * Calculates the credit modifier of the customer to according to the last four
+     * digits of their ID code.
      * Debt - 0000...2499
      * Segment 1 - 2500...4999
      * Segment 2 - 5000...7499
@@ -106,18 +120,33 @@ public class DecisionEngine {
      * If inputs are invalid, then throws corresponding exceptions.
      *
      * @param personalCode Provided personal ID code
-     * @param loanAmount Requested loan amount
-     * @param loanPeriod Requested loan period
-     * @throws InvalidPersonalCodeException If the provided personal ID code is invalid
-     * @throws InvalidLoanAmountException If the requested loan amount is invalid
-     * @throws InvalidLoanPeriodException If the requested loan period is invalid
+     * @param loanAmount   Requested loan amount
+     * @param loanPeriod   Requested loan period
+     * @throws InvalidPersonalCodeException If the provided personal ID code is
+     *                                      invalid
+     * @throws InvalidLoanAmountException   If the requested loan amount is invalid
+     * @throws InvalidLoanPeriodException   If the requested loan period is invalid
+     * @throws AgeNotInRangeException       If customer's age is not in the valid
+     *                                      range
      */
     private void verifyInputs(String personalCode, Long loanAmount, int loanPeriod)
-            throws InvalidPersonalCodeException, InvalidLoanAmountException, InvalidLoanPeriodException {
+            throws InvalidPersonalCodeException, InvalidLoanAmountException, InvalidLoanPeriodException,
+            AgeNotInRangeException {
 
         if (!validator.isValid(personalCode)) {
             throw new InvalidPersonalCodeException("Invalid personal ID code!");
         }
+        try {
+            int ageMonths = (int) parser.getAge(personalCode).toTotalMonths();
+            if (ageMonths / 12 < 18 ||
+                    ageMonths > (DecisionEngineConstants.AVG_LIFE_EXPECTANCY_MONTHS
+                            - DecisionEngineConstants.MAXIMUM_LOAN_PERIOD)) {
+                throw new AgeNotInRangeException("Age outside the valid range!");
+            }
+        } catch (Exception e) {
+            throw new InvalidPersonalCodeException("Invalid personal ID code!");
+        }
+
         if (!(DecisionEngineConstants.MINIMUM_LOAN_AMOUNT <= loanAmount)
                 || !(loanAmount <= DecisionEngineConstants.MAXIMUM_LOAN_AMOUNT)) {
             throw new InvalidLoanAmountException("Invalid loan amount!");
@@ -137,43 +166,15 @@ public class DecisionEngine {
      *
      * @param loanAmount Requested loan amount
      * @param loanPeriod Requested loan period
-     * @return credit score based on loan amount, period and currently selected credit modifier
+     * @return credit score based on loan amount, period and currently selected
+     *         credit modifier
      */
     private double getCreditScore(Long loanAmount, int loanPeriod) {
-        return this.creditModifier / loanAmount * loanPeriod / 10;
+        return (double) creditModifier / (double) loanAmount * (double) loanPeriod / 10.0;
     }
 
-    public static void main(String[] args) {
-        DecisionEngine engine = new DecisionEngine();
-
-        Decision decision1;
-        Decision decision2;
-        Decision decision3;
-        try {
-            decision1 = engine.calculateApprovedLoan("62001043753", 2000L, 36);
-            decision2 = engine.calculateApprovedLoan("50304107074", 4300L, 10);
-            decision3 = engine.calculateApprovedLoan("44806082791", 2000L, 12);
-        } catch (Throwable e) {
-            System.out.println(e.getMessage());
-            return;
-        }
-
-        System.out.println(
-            "62001043753" + "\n" +
-            "Loan amount: " + decision1.getLoanAmount() + "\n" +
-            "Loan period: " + decision1.getLoanPeriod() + "\n"
-        );
-
-        System.out.println(
-            "50304107074" + "\n" +
-            "Loan amount: " + decision2.getLoanAmount() + "\n" +
-            "Loan period: " + decision2.getLoanPeriod() + "\n"
-        );
-
-        System.out.println(
-            "44806082791" + "\n" +
-            "Loan amount: " + decision3.getLoanAmount() + "\n" +
-            "Loan period: " + decision3.getLoanPeriod() + "\n"
-        );
+    public static void main(String[] args) throws Throwable {
+        DecisionEngine decisionEngine = new DecisionEngine();
+        decisionEngine.calculateApprovedLoan("50307172740", 4000L, 12);
     }
 }
