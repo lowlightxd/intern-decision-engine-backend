@@ -51,6 +51,10 @@ public class DecisionEngine {
             throw new NoValidLoanException("No valid loan found!");
         }
 
+        if (getCreditScore(loanAmount, loanPeriod) < DecisionEngineConstants.MINIMUM_APPROVED_CREDIT_SCORE) {
+            throw new NoValidLoanException("No valid loan found!");
+        }
+
         while (highestValidLoanAmount(loanPeriod) < DecisionEngineConstants.MINIMUM_LOAN_AMOUNT) {
             loanPeriod++;
         }
@@ -122,6 +126,54 @@ public class DecisionEngine {
                 || !(loanPeriod <= DecisionEngineConstants.MAXIMUM_LOAN_PERIOD)) {
             throw new InvalidLoanPeriodException("Invalid loan period!");
         }
+    }
 
+    /**
+     * Calculate the credit score.
+     *
+     * Used for determining the approvement of a loan:
+     * If the result is less than 0.1, then we would not approve such a sum.
+     * If the result is larger or equal than 0.1 then we would approve this sum.
+     *
+     * @param loanAmount Requested loan amount
+     * @param loanPeriod Requested loan period
+     * @return credit score based on loan amount, period and currently selected credit modifier
+     */
+    private double getCreditScore(Long loanAmount, int loanPeriod) {
+        return this.creditModifier / loanAmount * loanPeriod / 10;
+    }
+
+    public static void main(String[] args) {
+        DecisionEngine engine = new DecisionEngine();
+
+        Decision decision1;
+        Decision decision2;
+        Decision decision3;
+        try {
+            decision1 = engine.calculateApprovedLoan("62001043753", 2000L, 36);
+            decision2 = engine.calculateApprovedLoan("50304107074", 4300L, 10);
+            decision3 = engine.calculateApprovedLoan("44806082791", 2000L, 12);
+        } catch (Throwable e) {
+            System.out.println(e.getMessage());
+            return;
+        }
+
+        System.out.println(
+            "62001043753" + "\n" +
+            "Loan amount: " + decision1.getLoanAmount() + "\n" +
+            "Loan period: " + decision1.getLoanPeriod() + "\n"
+        );
+
+        System.out.println(
+            "50304107074" + "\n" +
+            "Loan amount: " + decision2.getLoanAmount() + "\n" +
+            "Loan period: " + decision2.getLoanPeriod() + "\n"
+        );
+
+        System.out.println(
+            "44806082791" + "\n" +
+            "Loan amount: " + decision3.getLoanAmount() + "\n" +
+            "Loan period: " + decision3.getLoanPeriod() + "\n"
+        );
     }
 }
